@@ -1,0 +1,65 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Distribución CloudFront para distribuir contenido de un bucket s3 privado'
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Description: 'Nombre del bucket S3 que será el origen de CloudFront'
+
+Resources:
+  # Origin Access Identity
+  CloudFrontOAI:
+    Type: 'AWS::CloudFront::CloudFrontOriginAccessIdentity'
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: 'OAI para acceder a un bucket S3 privado'
+
+  # S3 Bucket Policy for the origin bucket
+  BucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref S3BucketName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOAI.S3CanonicalUserId
+            Action: 's3:GetObject'
+            Resource: !Sub 'arn:aws:s3:::${S3BucketName}/*'
+
+  # CloudFront Distribution
+  CloudFrontDistribution:
+    Type: 'AWS::CloudFront::Distribution'
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        PriceClass: PriceClass_All
+        Origins:
+          - DomainName: !Sub '${S3BucketName}.s3.${AWS::Region}.amazonaws.com'
+            Id: S3Origin
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${CloudFrontOAI}'
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized managed policy
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+        HttpVersion: http2
+        IPV6Enabled: true
+
+Outputs:
+  DistributionId:
+    Description: 'ID de la distribución CloudFront'
+    Value: !Ref CloudFrontDistribution
+    
+  DistributionDomainName:
+    Description: 'Dominio de la distribución CloudFront'
+    Value: !GetAtt CloudFrontDistribution.DomainName
